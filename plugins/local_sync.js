@@ -2,34 +2,12 @@ const LOCAL_SYNC_SERVER = 'http://127.0.0.1:8181'
 
 const ArrayUtils = {
     deduplicateIDs(arr) {
-        return [...new Set(arr.filter(id => id != null))]
-    },
-    
-    deduplicateCards(cards) {
-        const cardMap = new Map()
-        for (let i = cards.length - 1; i >= 0; i--) {
-            const card = cards[i]
-            if (card && card.id && !cardMap.has(card.id)) {
-                cardMap.set(card.id, card)
-            }
-        }
+        if (!arr || arr.length === 0) return []
+        const seen = new Set()
         const result = []
-        const added = new Set()
-        for (const card of cards) {
-            if (card && card.id && cardMap.has(card.id) && !added.has(card.id)) {
-                result.push(cardMap.get(card.id))
-                added.add(card.id)
-            }
-        }
-        return result
-    },
-    
-    mergeIDArrays(existing, newArr) {
-        const seen = new Set([...ArrayUtils.deduplicateIDs(existing)])
-        const result = [...seen]
-        
-        for (const id of ArrayUtils.deduplicateIDs(newArr)) {
-            if (!seen.has(id)) {
+        for (let i = 0; i < arr.length; i++) {
+            const id = arr[i]
+            if (id != null && !seen.has(id)) {
                 seen.add(id)
                 result.push(id)
             }
@@ -37,8 +15,47 @@ const ArrayUtils = {
         return result
     },
     
+    deduplicateCards(cards) {
+        if (!cards || cards.length === 0) return []
+        const seen = new Set()
+        const result = []
+        
+        for (let i = 0; i < cards.length; i++) {
+            const card = cards[i]
+            if (card && card.id && !seen.has(card.id)) {
+                seen.add(card.id)
+                result.push(card)
+            }
+        }
+        
+        return result
+    },
+    
+    mergeIDArrays(existing, newArr) {
+        if (!newArr || newArr.length === 0) return existing || []
+        if (!existing || existing.length === 0) return this.deduplicateIDs(newArr)
+        
+        const seen = new Set(existing)
+        const result = [...existing]
+        
+        for (let i = 0; i < newArr.length; i++) {
+            const id = newArr[i]
+            if (id != null && !seen.has(id)) {
+                seen.add(id)
+                result.push(id)
+            }
+        }
+        
+        return result
+    },
+    
     mergeCards(existing, serverCards) {
+        if (!serverCards || serverCards.length === 0) return existing || []
+        if (!existing || existing.length === 0) return this.deduplicateCards(serverCards)
+        
         const cardMap = new Map()
+        const seen = new Set()
+        const result = []
         
         for (let i = existing.length - 1; i >= 0; i--) {
             const card = existing[i]
@@ -47,26 +64,22 @@ const ArrayUtils = {
             }
         }
         
-        for (const card of serverCards || []) {
+        for (let i = 0; i < serverCards.length; i++) {
+            const card = serverCards[i]
             if (card && card.id) {
                 cardMap.set(card.id, card)
+                if (!seen.has(card.id)) {
+                    seen.add(card.id)
+                    result.push(card)
+                }
             }
         }
         
-        const result = []
-        const added = new Set()
-        
-        for (const card of serverCards || []) {
-            if (card && card.id && !added.has(card.id)) {
+        for (let i = 0; i < existing.length; i++) {
+            const card = existing[i]
+            if (card && card.id && !seen.has(card.id)) {
+                seen.add(card.id)
                 result.push(cardMap.get(card.id))
-                added.add(card.id)
-            }
-        }
-        
-        for (const card of existing) {
-            if (card && card.id && !added.has(card.id)) {
-                result.push(cardMap.get(card.id))
-                added.add(card.id)
             }
         }
         
@@ -97,21 +110,76 @@ const FavoriteUtils = {
     },
     
     hasDuplicates(data) {
+        if (!data || typeof data !== 'object') return false
+        
         for (const key in data) {
             const value = data[key]
             if (Array.isArray(value)) {
                 if (key === 'card') {
-                    const ids = value.map(c => c && c.id).filter(Boolean)
-                    if (new Set(ids).size !== ids.length) return true
+                    const seen = new Set()
+                    for (let i = 0; i < value.length; i++) {
+                        const id = value[i] && value[i].id
+                        if (id != null) {
+                            if (seen.has(id)) return true
+                            seen.add(id)
+                        }
+                    }
                 } else {
-                    if (new Set(value).size !== value.length) return true
+                    const seen = new Set()
+                    for (let i = 0; i < value.length; i++) {
+                        const id = value[i]
+                        if (id != null) {
+                            if (seen.has(id)) return true
+                            seen.add(id)
+                        }
+                    }
                 }
             }
         }
         return false
     },
     
+    arraysEqual(arr1, arr2) {
+        if (!arr1 && !arr2) return true
+        if (!arr1 || !arr2 || arr1.length !== arr2.length) return false
+        
+        for (let i = 0; i < arr1.length; i++) {
+            if (arr1[i] !== arr2[i]) return false
+        }
+        return true
+    },
+    
+    cardsEqual(cards1, cards2) {
+        if (!cards1 && !cards2) return true
+        if (!cards1 || !cards2 || cards1.length !== cards2.length) return false
+        
+        const ids1 = new Set()
+        const ids2 = new Set()
+        
+        for (let i = 0; i < cards1.length; i++) {
+            const id = cards1[i] && cards1[i].id
+            if (id != null) ids1.add(id)
+        }
+        
+        for (let i = 0; i < cards2.length; i++) {
+            const id = cards2[i] && cards2[i].id
+            if (id != null) ids2.add(id)
+        }
+        
+        if (ids1.size !== ids2.size) return false
+        
+        for (const id of ids1) {
+            if (!ids2.has(id)) return false
+        }
+        
+        return true
+    },
+    
     merge(existing, serverData) {
+        if (!serverData || typeof serverData !== 'object') {
+            return { merged: existing, changed: false }
+        }
+        
         const merged = { ...existing }
         const serverDedup = FavoriteUtils.deduplicate(serverData)
         let changed = false
@@ -122,19 +190,21 @@ const FavoriteUtils = {
             
             if (key === 'card') {
                 const mergedCards = ArrayUtils.mergeCards(currentValue || [], serverValue || [])
-                if (JSON.stringify(mergedCards) !== JSON.stringify(currentValue || [])) {
+                if (!FavoriteUtils.cardsEqual(mergedCards, currentValue || [])) {
                     merged[key] = mergedCards
                     changed = true
                 }
             } else if (Array.isArray(serverValue)) {
                 const mergedIDs = ArrayUtils.mergeIDArrays(currentValue || [], serverValue)
-                if (JSON.stringify(mergedIDs) !== JSON.stringify(currentValue || [])) {
+                if (!FavoriteUtils.arraysEqual(mergedIDs, currentValue || [])) {
                     merged[key] = mergedIDs
                     changed = true
                 }
-            } else if (JSON.stringify(serverValue) !== JSON.stringify(currentValue)) {
-                merged[key] = serverValue
-                changed = true
+            } else {
+                if (serverValue !== currentValue) {
+                    merged[key] = serverValue
+                    changed = true
+                }
             }
         }
         
@@ -146,13 +216,16 @@ class LocalTimelineSync {
     constructor() {
         this.updateTimer = null
         this.isUpdating = false
+        this.timelineFilename = null
+        this.fileViewKeysCache = null
+        this.cacheTimestamp = 0
+        this.CACHE_TTL = 5000
     }
 
     listen() {
         const waitForLampa = () => {
             if (this.isLampaReady()) {
                 this.setupStorageListener()
-                this.startPeriodicSync()
                 this.initialSync()
             } else {
                 setTimeout(waitForLampa, 100)
@@ -173,6 +246,9 @@ class LocalTimelineSync {
             if (this.isUpdating) return
             
             if (this.shouldSyncField(e.name)) {
+                if (this.isFileViewKey(e.name)) {
+                    this.invalidateFileViewCache()
+                }
                 this.debounceUpdate()
             }
         })
@@ -189,10 +265,6 @@ class LocalTimelineSync {
             clearTimeout(this.updateTimer)
         }
         this.updateTimer = setTimeout(() => this.update(), 1000)
-    }
-    
-    startPeriodicSync() {
-        setInterval(() => this.read(), 60 * 1000)
     }
     
     initialSync() {
@@ -223,19 +295,34 @@ class LocalTimelineSync {
     }
     
     collectFileViewData(saveData) {
-        for (let i = 0; i < window.localStorage.length; i++) {
-            const key = window.localStorage.key(i)
-            if (key === 'file_view' || (key && key.startsWith('file_view_'))) {
-                try {
-                    const value = Lampa.Storage.get(key, '{}')
-                    if (value && typeof value === 'object' && !Array.isArray(value)) {
-                        saveData[key] = value
-                    }
-                } catch (e) {
-                    console.error('Local sync: error getting value for', key, e)
+        const now = Date.now()
+        if (!this.fileViewKeysCache || (now - this.cacheTimestamp) > this.CACHE_TTL) {
+            this.fileViewKeysCache = []
+            for (let i = 0; i < window.localStorage.length; i++) {
+                const key = window.localStorage.key(i)
+                if (key === 'file_view' || (key && key.startsWith('file_view_'))) {
+                    this.fileViewKeysCache.push(key)
                 }
             }
+            this.cacheTimestamp = now
         }
+        
+        for (let i = 0; i < this.fileViewKeysCache.length; i++) {
+            const key = this.fileViewKeysCache[i]
+            try {
+                const value = Lampa.Storage.get(key, '{}')
+                if (value && typeof value === 'object' && !Array.isArray(value)) {
+                    saveData[key] = value
+                }
+            } catch (e) {
+                console.error('Local sync: error getting value for', key, e)
+            }
+        }
+    }
+    
+    invalidateFileViewCache() {
+        this.fileViewKeysCache = null
+        this.cacheTimestamp = 0
     }
     
     collectFavoriteData(saveData) {
@@ -332,8 +419,11 @@ class LocalTimelineSync {
         const hashNum = typeof hash === 'string' ? parseInt(hash, 10) : hash
         if (isNaN(hashNum) || hashNum === 0) return
         
-        const filename = Lampa.Timeline.filename()
-        const currentViewed = Lampa.Storage.get(filename, '{}')
+        if (!this.timelineFilename) {
+            this.timelineFilename = Lampa.Timeline.filename()
+        }
+        
+        const currentViewed = Lampa.Storage.get(this.timelineFilename, '{}')
         const currentTime = currentViewed[hashNum]
         
         const merged = this.mergeTimelineData(currentTime, serverTime)
@@ -396,10 +486,8 @@ class LocalTimelineSync {
         try {
             const favorite = Lampa.Storage.get('favorite', '{}')
             if (favorite && typeof favorite === 'object') {
-                const deduplicated = FavoriteUtils.deduplicate(favorite)
-                
-                if (FavoriteUtils.hasDuplicates(favorite) || 
-                    JSON.stringify(favorite) !== JSON.stringify(deduplicated)) {
+                if (FavoriteUtils.hasDuplicates(favorite)) {
+                    const deduplicated = FavoriteUtils.deduplicate(favorite)
                     this.isUpdating = true
                     Lampa.Storage.set('favorite', deduplicated, true)
                     this.isUpdating = false
